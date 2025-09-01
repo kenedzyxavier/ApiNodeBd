@@ -7,14 +7,14 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-// ===== Conexão com MySQL (Render/externo) =====
+// ===== Conexão com MySQL (Railway) =====
 const db = mysql.createConnection({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASS,
   database: process.env.DB_NAME,
   port: process.env.DB_PORT || 3306,
-  ssl: { rejectUnauthorized: true } // necessário p/ MySQL em nuvem
+  ssl: { rejectUnauthorized: false } // 🚀 Ajustado para Railway
 });
 
 db.connect(err => {
@@ -56,7 +56,7 @@ function formatarDataBR(dataISO) {
 // ROTA RAIZ
 // =============================
 app.get("/", (req, res) => {
-  res.send("🚀 API rodando com sucesso no Render!");
+  res.send("🚀 API rodando com sucesso no Render/Railway!");
 });
 
 // =============================
