@@ -8,21 +8,26 @@ app.use(cors());
 app.use(bodyParser.json());
 
 // ===== Conexão com MySQL (Railway) =====
-const db = mysql.createConnection({
+const db = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASS,
   database: process.env.DB_NAME,
   port: process.env.DB_PORT || 3306,
-  ssl: { rejectUnauthorized: false } // 🚀 Ajustado para Railway
+  ssl: { rejectUnauthorized: false }, // 🚀 Ajustado para Railway
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0
 });
 
-db.connect(err => {
+// Testar conexão inicial
+db.getConnection((err, connection) => {
   if (err) {
     console.error("❌ Erro ao conectar no MySQL:", err);
-    return;
+  } else {
+    console.log("✅ Conectado ao MySQL!");
+    connection.release();
   }
-  console.log("✅ Conectado ao MySQL!");
 });
 
 // =============================
@@ -129,13 +134,14 @@ app.post("/respostas", (req, res) => {
   const sql = `
     INSERT INTO respostas 
     (cns, nome, data_nasc, sexo, local, leite_peito, alimentos, refeicao_tv, refeicoes, consumos,
-     prof_nome, prof_login, prof_sus, prof_cbo, prof_cnes, prof_ine)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     prof_nome, prof_login, prof_sus, prof_cbo, prof_cnes, prof_ine, profissionais_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
   db.query(sql, [
     r.cns, r.nome, formatarDataBRparaISO(r.dataNasc), r.sexo, r.local,
     r.leitePeito, r.alimentos, r.refeicaoTV, r.refeicoes, r.consumos,
-    r.profNome, r.profLogin, r.profSus, r.profCbo, r.profCnes, r.profIne
+    r.profNome, r.profLogin, r.profSus, r.profCbo, r.profCnes, r.profIne,
+    r.profissionaisId || null
   ], (err, result) => {
     if (err) {
       console.error("Erro SQL:", err);
@@ -154,14 +160,15 @@ app.post("/respostas/lote", (req, res) => {
   const sql = `
     INSERT INTO respostas 
     (cns, nome, data_nasc, sexo, local, leite_peito, alimentos, refeicao_tv, refeicoes, consumos,
-     prof_nome, prof_login, prof_sus, prof_cbo, prof_cnes, prof_ine)
+     prof_nome, prof_login, prof_sus, prof_cbo, prof_cnes, prof_ine, profissionais_id)
     VALUES ?
   `;
 
   const values = respostas.map(r => [
     r.cns, r.nome, formatarDataBRparaISO(r.dataNasc), r.sexo, r.local,
     r.leitePeito, r.alimentos, r.refeicaoTV, r.refeicoes, r.consumos,
-    r.profNome, r.profLogin, r.profSus, r.profCbo, r.profCnes, r.profIne
+    r.profNome, r.profLogin, r.profSus, r.profCbo, r.profCnes, r.profIne,
+    r.profissionaisId || null
   ]);
 
   db.query(sql, [values], (err, result) => {
