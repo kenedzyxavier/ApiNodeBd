@@ -14,7 +14,7 @@ const db = mysql.createPool({
   password: process.env.DB_PASS,
   database: process.env.DB_NAME,
   port: process.env.DB_PORT || 3306,
-  ssl: { rejectUnauthorized: false }, // 🚀 Ajustado para Railway
+  ssl: { rejectUnauthorized: false },
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0
@@ -131,17 +131,19 @@ app.delete("/profissionais/:id", (req, res) => {
 // =============================
 app.post("/respostas", (req, res) => {
   const r = req.body;
+
   const sql = `
     INSERT INTO respostas 
     (cns, nome, data_nasc, sexo, local, leite_peito, alimentos, refeicao_tv, refeicoes, consumos,
      prof_nome, prof_login, prof_sus, prof_cbo, prof_cnes, prof_ine, profissionais_id)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
+
   db.query(sql, [
-    r.cns, r.nome, formatarDataBRparaISO(r.dataNasc), r.sexo, r.local,
-    r.leitePeito, r.alimentos, r.refeicaoTV, r.refeicoes, r.consumos,
-    r.profNome, r.profLogin, r.profSus, r.profCbo, r.profCnes, r.profIne,
-    r.profissionaisId || null
+    r.cns, r.nome, formatarDataBRparaISO(r.data_nasc), r.sexo, r.local,
+    r.leite_peito, r.alimentos, r.refeicao_tv, r.refeicoes, r.consumos,
+    r.prof_nome, r.prof_login, r.prof_sus, r.prof_cbo, r.prof_cnes, r.prof_ine,
+    r.profissionais_id || null
   ], (err, result) => {
     if (err) {
       console.error("Erro SQL:", err);
@@ -153,6 +155,7 @@ app.post("/respostas", (req, res) => {
 
 app.post("/respostas/lote", (req, res) => {
   const respostas = req.body;
+
   if (!Array.isArray(respostas)) {
     return res.status(400).json({ erro: "Esperado um array de respostas" });
   }
@@ -165,10 +168,10 @@ app.post("/respostas/lote", (req, res) => {
   `;
 
   const values = respostas.map(r => [
-    r.cns, r.nome, formatarDataBRparaISO(r.dataNasc), r.sexo, r.local,
-    r.leitePeito, r.alimentos, r.refeicaoTV, r.refeicoes, r.consumos,
-    r.profNome, r.profLogin, r.profSus, r.profCbo, r.profCnes, r.profIne,
-    r.profissionaisId || null
+    r.cns, r.nome, formatarDataBRparaISO(r.data_nasc), r.sexo, r.local,
+    r.leite_peito, r.alimentos, r.refeicao_tv, r.refeicoes, r.consumos,
+    r.prof_nome, r.prof_login, r.prof_sus, r.prof_cbo, r.prof_cnes, r.prof_ine,
+    r.profissionais_id || null
   ]);
 
   db.query(sql, [values], (err, result) => {
