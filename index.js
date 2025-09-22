@@ -51,8 +51,8 @@ function formatarDataBRparaISO(data) {
 function formatarDataBR(dataISO) {
   if (!dataISO) return null;
   const d = new Date(dataISO);
-  const dia = String(d.getUTCDate()).padStart(2, '0');
-  const mes = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dia = String(d.getUTCDate()).padStart(2, "0");
+  const mes = String(d.getUTCMonth() + 1).padStart(2, "0");
   const ano = d.getUTCFullYear();
   return `${dia}/${mes}/${ano}`;
 }
@@ -102,13 +102,19 @@ app.post("/profissionais", (req, res) => {
     INSERT INTO profissionais (nome, login, sus, cbo, cnes, ine, senha)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `;
-  db.query(sql, [p.nome, p.login, p.sus, p.cbo, p.cnes, p.ine, p.senha], (err, result) => {
-    if (err) {
-      console.error("Erro SQL:", err);
-      return res.status(500).json({ erro: "Erro ao salvar profissional", detalhe: err });
+  db.query(
+    sql,
+    [p.nome, p.login, p.sus, p.cbo, p.cnes, p.ine, p.senha],
+    (err, result) => {
+      if (err) {
+        console.error("Erro SQL:", err);
+        return res
+          .status(500)
+          .json({ erro: "Erro ao salvar profissional", detalhe: err });
+      }
+      res.json({ id: result.insertId, ...p });
     }
-    res.json({ id: result.insertId, ...p });
-  });
+  );
 });
 
 app.get("/profissionais", (req, res) => {
@@ -137,18 +143,37 @@ app.post("/respostas", (req, res) => {
      prof_nome, prof_login, prof_sus, prof_cbo, prof_cnes, prof_ine, profissionais_id)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
-  db.query(sql, [
-    r.cns, r.nome, formatarDataBRparaISO(r.dataNasc), r.sexo, r.local,
-    r.leitePeito, r.alimentos, r.refeicaoTV, r.refeicoes, r.consumos,
-    r.profNome, r.profLogin, r.profSus, r.profCbo, r.profCnes, r.profIne,
-    r.profissionaisId || null
-  ], (err, result) => {
-    if (err) {
-      console.error("Erro SQL:", err);
-      return res.status(500).json({ erro: "Erro ao salvar resposta", detalhe: err });
+  db.query(
+    sql,
+    [
+      r.cns,
+      r.nome,
+      formatarDataBRparaISO(r.dataNasc),
+      r.sexo,
+      r.local,
+      r.leitePeito,
+      r.alimentos,
+      r.refeicaoTV,
+      r.refeicoes,
+      r.consumos,
+      r.profNome,
+      r.profLogin,
+      r.profSus,
+      r.profCbo,
+      r.profCnes,
+      r.profIne,
+      r.profissionaisId || null,
+    ],
+    (err, result) => {
+      if (err) {
+        console.error("Erro SQL:", err);
+        return res
+          .status(500)
+          .json({ erro: "Erro ao salvar resposta", detalhe: err });
+      }
+      res.json({ id: result.insertId, ...r });
     }
-    res.json({ id: result.insertId, ...r });
-  });
+  );
 });
 
 app.post("/respostas/lote", (req, res) => {
@@ -164,29 +189,54 @@ app.post("/respostas/lote", (req, res) => {
     VALUES ?
   `;
 
-  const values = respostas.map(r => [
-    r.cns, r.nome, formatarDataBRparaISO(r.dataNasc), r.sexo, r.local,
-    r.leitePeito, r.alimentos, r.refeicaoTV, r.refeicoes, r.consumos,
-    r.profNome, r.profLogin, r.profSus, r.profCbo, r.profCnes, r.profIne,
-    r.profissionaisId || null
+  const values = respostas.map((r) => [
+    r.cns,
+    r.nome,
+    formatarDataBRparaISO(r.dataNasc),
+    r.sexo,
+    r.local,
+    r.leitePeito,
+    r.alimentos,
+    r.refeicaoTV,
+    r.refeicoes,
+    r.consumos,
+    r.profNome,
+    r.profLogin,
+    r.profSus,
+    r.profCbo,
+    r.profCnes,
+    r.profIne,
+    r.profissionaisId || null,
   ]);
 
   db.query(sql, [values], (err, result) => {
     if (err) {
       console.error("Erro SQL:", err);
-      return res.status(500).json({ erro: "Erro ao salvar respostas", detalhe: err });
+      return res
+        .status(500)
+        .json({ erro: "Erro ao salvar respostas", detalhe: err });
     }
-    res.json({ mensagem: "Respostas salvas com sucesso", inseridos: result.affectedRows });
+    res.json({
+      mensagem: "Respostas salvas com sucesso",
+      inseridos: result.affectedRows,
+    });
   });
 });
 
+// 🚀 Agora trazendo também a data_envio formatada
 app.get("/respostas", (req, res) => {
-  db.query("SELECT * FROM respostas ORDER BY id DESC", (err, rows) => {
+  const sql = "SELECT * FROM respostas ORDER BY id DESC";
+  db.query(sql, (err, rows) => {
     if (err) return res.status(500).json({ erro: err });
-    const formatadas = rows.map(r => ({
+
+    const formatadas = rows.map((r) => ({
       ...r,
-      data_nasc: formatarDataBR(r.data_nasc)
+      data_nasc: formatarDataBR(r.data_nasc),
+      data_envio: r.data_envio
+        ? new Date(r.data_envio).toLocaleString("pt-BR")
+        : null,
     }));
+
     res.json(formatadas);
   });
 });
