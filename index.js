@@ -135,14 +135,15 @@ app.post("/respostas", (req, res) => {
   const sql = `
     INSERT INTO respostas 
     (cns, nome, data_nasc, sexo, local, leite_peito, alimentos, refeicao_tv, refeicoes, consumos,
-     prof_nome, prof_login, prof_sus, prof_cbo, prof_cnes, prof_ine,profissional_id)
+     prof_nome, prof_login, prof_sus, prof_cbo, prof_cnes, prof_ine, profissional_id)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
   db.query(sql, [
     r.cns, r.nome, formatarDataBRparaISO(r.data_nasc), r.sexo, r.local,
     r.leite_peito, r.alimentos, r.refeicao_tv, r.refeicoes, r.consumos,
-    r.prof_nome, r.prof_login, r.prof_sus, r.prof_cbo, r.prof_cnes, r.prof_ine
+    r.prof_nome, r.prof_login, r.prof_sus, r.prof_cbo, r.prof_cnes, r.prof_ine,
+    r.profissional_id || null
   ], (err, result) => {
     if (err) {
       console.error("Erro SQL:", err);
@@ -169,7 +170,8 @@ app.post("/respostas/lote", (req, res) => {
   const values = respostas.map(r => [
     r.cns, r.nome, formatarDataBRparaISO(r.data_nasc), r.sexo, r.local,
     r.leite_peito, r.alimentos, r.refeicao_tv, r.refeicoes, r.consumos,
-    r.prof_nome, r.prof_login, r.prof_sus, r.prof_cbo, r.prof_cnes, r.prof_ine
+    r.prof_nome, r.prof_login, r.prof_sus, r.prof_cbo, r.prof_cnes, r.prof_ine,
+    r.profissional_id || null
   ]);
 
   db.query(sql, [values], (err, result) => {
