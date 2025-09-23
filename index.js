@@ -1,3 +1,4 @@
+// server.js
 const express = require("express");
 const mysql = require("mysql2");
 const bodyParser = require("body-parser");
@@ -7,7 +8,7 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-// ===== Conexão com MySQL (Railway) =====
+// ===== Conexão com MySQL (Railway / Render / outro) =====
 const db = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
@@ -35,9 +36,10 @@ db.getConnection((err, connection) => {
 // =============================
 function formatarDataBRparaISO(data) {
   if (!data) return null;
+  if (typeof data !== "string") return data;
   if (data.includes("/")) {
     const [dia, mes, ano] = data.split("/");
-    return `${ano}-${mes}-${dia}`;
+    return `${ano}-${mes.padStart(2,'0')}-${dia.padStart(2,'0')}`;
   }
   if (data.length === 8) {
     const dia = data.substring(0, 2);
@@ -51,6 +53,7 @@ function formatarDataBRparaISO(data) {
 function formatarDataBR(dataISO) {
   if (!dataISO) return null;
   const d = new Date(dataISO);
+  if (isNaN(d.getTime())) return dataISO;
   const dia = String(d.getUTCDate()).padStart(2, '0');
   const mes = String(d.getUTCMonth() + 1).padStart(2, '0');
   const ano = d.getUTCFullYear();
@@ -61,7 +64,7 @@ function formatarDataBR(dataISO) {
 // ROTA RAIZ
 // =============================
 app.get("/", (req, res) => {
-  res.send("🚀 API rodando com sucesso no Render/Railway!");
+  res.send("🚀 API rodando com sucesso!");
 });
 
 // =============================
@@ -118,6 +121,15 @@ app.get("/profissionais", (req, res) => {
   });
 });
 
+app.get("/profissionais/:id", (req, res) => {
+  const { id } = req.params;
+  db.query("SELECT * FROM profissionais WHERE id = ?", [id], (err, rows) => {
+    if (err) return res.status(500).json({ erro: err });
+    if (rows.length === 0) return res.status(404).json({ erro: "Profissional não encontrado" });
+    res.json(rows[0]);
+  });
+});
+
 app.delete("/profissionais/:id", (req, res) => {
   const { id } = req.params;
   db.query("DELETE FROM profissionais WHERE id=?", [id], (err) => {
@@ -128,6 +140,9 @@ app.delete("/profissionais/:id", (req, res) => {
 
 // =============================
 // ROTAS RESPOSTAS
+// - usa `profissional_id` (FK para profissionais.id)
+// - grava `data_envio` com timestamp atual
+// - ao buscar, faz JOIN para trazer dados do profissional associado
 // =============================
 app.post("/respostas", (req, res) => {
   const r = req.body;
@@ -135,21 +150,25 @@ app.post("/respostas", (req, res) => {
   const sql = `
     INSERT INTO respostas 
     (cns, nome, data_nasc, sexo, local, leite_peito, alimentos, refeicao_tv, refeicoes, consumos,
-     prof_nome, prof_login, prof_sus, prof_cbo, prof_cnes, prof_ine, profissional_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     prof_nome, prof_login, prof_sus, prof_cbo, prof_cnes, prof_ine, profissional_id, data_envio)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
+  const dataNascISO = formatarDataBRparaISO(r.data_nasc);
+  const now = new Date(); // será gravado como timestamp
+
   db.query(sql, [
-    r.cns, r.nome, formatarDataBRparaISO(r.data_nasc), r.sexo, r.local,
+    r.cns, r.nome, dataNascISO, r.sexo, r.local,
     r.leite_peito, r.alimentos, r.refeicao_tv, r.refeicoes, r.consumos,
     r.prof_nome, r.prof_login, r.prof_sus, r.prof_cbo, r.prof_cnes, r.prof_ine,
-    r.profissional_id || null
+    r.profissional_id || null,
+    now
   ], (err, result) => {
     if (err) {
       console.error("Erro SQL:", err);
       return res.status(500).json({ erro: "Erro ao salvar resposta", detalhe: err });
     }
-    res.json({ id: result.insertId, ...r });
+    res.json({ id: result.insertId, ...r, data_nasc: dataNascISO, data_envio: now });
   });
 });
 
@@ -163,16 +182,21 @@ app.post("/respostas/lote", (req, res) => {
   const sql = `
     INSERT INTO respostas 
     (cns, nome, data_nasc, sexo, local, leite_peito, alimentos, refeicao_tv, refeicoes, consumos,
-     prof_nome, prof_login, prof_sus, prof_cbo, prof_cnes, prof_ine, profissional_id)
+     prof_nome, prof_login, prof_sus, prof_cbo, prof_cnes, prof_ine, profissional_id, data_envio)
     VALUES ?
   `;
 
-  const values = respostas.map(r => [
-    r.cns, r.nome, formatarDataBRparaISO(r.data_nasc), r.sexo, r.local,
-    r.leite_peito, r.alimentos, r.refeicao_tv, r.refeicoes, r.consumos,
-    r.prof_nome, r.prof_login, r.prof_sus, r.prof_cbo, r.prof_cnes, r.prof_ine,
-    r.profissional_id || null
-  ]);
+  const values = respostas.map(r => {
+    const dataNascISO = formatarDataBRparaISO(r.data_nasc);
+    const now = new Date();
+    return [
+      r.cns, r.nome, dataNascISO, r.sexo, r.local,
+      r.leite_peito, r.alimentos, r.refeicao_tv, r.refeicoes, r.consumos,
+      r.prof_nome, r.prof_login, r.prof_sus, r.prof_cbo, r.prof_cnes, r.prof_ine,
+      r.profissional_id || null,
+      now
+    ];
+  });
 
   db.query(sql, [values], (err, result) => {
     if (err) {
@@ -183,15 +207,50 @@ app.post("/respostas/lote", (req, res) => {
   });
 });
 
+// GET /respostas: traz respostas + informaçõs do profissional (JOIN)
 app.get("/respostas", (req, res) => {
-  db.query("SELECT * FROM respostas ORDER BY id DESC", (err, rows) => {
+  const sql = `
+    SELECT r.*, 
+           p.id AS profissional_id_link, p.nome AS profissional_nome, p.login AS profissional_login,
+           p.sus AS profissional_sus, p.cbo AS profissional_cbo, p.cnes AS profissional_cnes, p.ine AS profissional_ine
+    FROM respostas r
+    LEFT JOIN profissionais p ON r.profissional_id = p.id
+    ORDER BY r.id DESC
+  `;
+
+  db.query(sql, (err, rows) => {
     if (err) return res.status(500).json({ erro: err });
-    const formatadas = rows.map(r => ({
-      ...r,
-      data_nasc: formatarDataBR(r.data_nasc),
-      data_envio: r.data_envio ? new Date(r.data_envio).toLocaleString("pt-BR") : null
-    }));
+
+    const formatadas = rows.map(r => {
+      return {
+        ...r,
+        data_nasc: formatarDataBR(r.data_nasc),
+        data_envio: r.data_envio ? new Date(r.data_envio).toLocaleString("pt-BR") : null
+      };
+    });
+
     res.json(formatadas);
+  });
+});
+
+app.get("/respostas/:id", (req, res) => {
+  const { id } = req.params;
+  const sql = `
+    SELECT r.*, 
+           p.id AS profissional_id_link, p.nome AS profissional_nome, p.login AS profissional_login,
+           p.sus AS profissional_sus, p.cbo AS profissional_cbo, p.cnes AS profissional_cnes, p.ine AS profissional_ine
+    FROM respostas r
+    LEFT JOIN profissionais p ON r.profissional_id = p.id
+    WHERE r.id = ?
+    LIMIT 1
+  `;
+  db.query(sql, [id], (err, rows) => {
+    if (err) return res.status(500).json({ erro: err });
+    if (rows.length === 0) return res.status(404).json({ erro: "Resposta não encontrada" });
+    const r = rows[0];
+    r.data_nasc = formatarDataBR(r.data_nasc);
+    r.data_envio = r.data_envio ? new Date(r.data_envio).toLocaleString("pt-BR") : null;
+    res.json(r);
   });
 });
 
