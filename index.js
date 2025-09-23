@@ -188,7 +188,8 @@ app.get("/respostas", (req, res) => {
     if (err) return res.status(500).json({ erro: err });
     const formatadas = rows.map(r => ({
       ...r,
-      data_nasc: formatarDataBR(r.data_nasc)
+      data_nasc: formatarDataBR(r.data_nasc),
+      data_envio: r.data_envio ? new Date(r.data_envio).toLocaleString("pt-BR") : null
     }));
     res.json(formatadas);
   });
