@@ -152,25 +152,37 @@ app.post("/respostas", (req, res) => {
 });
 
 // Inserir múltiplas respostas (em lote)
-app.post("/respostas/lote", async (req, res) => {
+app.post("/respostas/lote", (req, res) => {
   const respostas = req.body; // array de respostas
-  try {
-    const values = [];
-    for (const r of respostas) {
-      const prof = await new Promise((resolve) => {
-        if (!r.profissional_id) return resolve({});
-        db.query("SELECT * FROM profissionais WHERE id=?", [r.profissional_id], (err, rows) => {
-          if (err) return resolve({});
-          resolve(rows[0] || {});
-        });
-      });
-      values.push([
+  const ids = respostas.map(r => r.profissional_id).filter(Boolean);
+
+  if (ids.length === 0) {
+    return res.status(400).json({ erro: "Nenhum profissional_id informado" });
+  }
+
+  // Busca todos os profissionais de uma vez
+  db.query("SELECT * FROM profissionais WHERE id IN (?)", [ids], (err, profs) => {
+    if (err) {
+      return res.status(500).json({ erro: "Erro ao buscar profissionais", detalhe: err });
+    }
+
+    // Mapeia profissionais por ID
+    const profMap = {};
+    for (const p of profs) {
+      profMap[p.id] = p;
+    }
+
+    // Monta os valores para inserção
+    const values = respostas.map(r => {
+      const prof = profMap[r.profissional_id] || {};
+      return [
         r.cns, r.nome, formatarDataBRparaISO(r.dataNasc), r.sexo, r.local,
         r.leitePeito, r.alimentos, r.refeicaoTV, r.refeicoes, r.consumos,
-        prof.nome || null, prof.login || null, prof.sus || null, prof.cbo || null, prof.cnes || null, prof.ine || null,
+        prof.nome || null, prof.login || null, prof.sus || null,
+        prof.cbo || null, prof.cnes || null, prof.ine || null,
         r.profissional_id || null
-      ]);
-    }
+      ];
+    });
 
     const sql = `
       INSERT INTO respostas
@@ -178,14 +190,19 @@ app.post("/respostas/lote", async (req, res) => {
        prof_nome, prof_login, prof_sus, prof_cbo, prof_cnes, prof_ine, profissional_id)
       VALUES ?
     `;
+
     db.query(sql, [values], (err, result) => {
-      if (err) return res.status(500).json({ erro: "Erro ao salvar respostas em lote", detalhe: err });
-      res.json({ mensagem: "Respostas salvas com sucesso", inseridos: result.affectedRows });
+      if (err) {
+        return res.status(500).json({ erro: "Erro ao salvar respostas em lote", detalhe: err });
+      }
+      res.json({
+        mensagem: "Respostas salvas com sucesso",
+        inseridos: result.affectedRows
+      });
     });
-  } catch (error) {
-    res.status(500).json({ erro: "Erro interno ao processar respostas em lote", detalhe: error });
-  }
+  });
 });
+
 
 // Listar respostas
 app.get("/respostas", (req, res) => {
