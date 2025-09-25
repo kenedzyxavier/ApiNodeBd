@@ -22,8 +22,9 @@ const db = mysql.createPool({
 
 // Testar conexão inicial
 db.getConnection((err, connection) => {
-  if (err) console.error("❌ Erro ao conectar no MySQL:", err);
-  else {
+  if (err) {
+    console.error("❌ Erro ao conectar no MySQL:", err);
+  } else {
     console.log("✅ Conectado ao MySQL!");
     connection.release();
   }
@@ -51,8 +52,8 @@ function formatarDataBR(dataISO) {
   if (!dataISO) return null;
   const d = new Date(dataISO);
   if (isNaN(d)) return dataISO;
-  const dia = String(d.getUTCDate()).padStart(2, '0');
-  const mes = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dia = String(d.getUTCDate()).padStart(2, "0");
+  const mes = String(d.getUTCMonth() + 1).padStart(2, "0");
   const ano = d.getUTCFullYear();
   return `${dia}/${mes}/${ano}`;
 }
@@ -60,7 +61,9 @@ function formatarDataBR(dataISO) {
 // =============================
 // ROTA RAIZ
 // =============================
-app.get("/", (req, res) => res.send("🚀 API rodando com sucesso!"));
+app.get("/", (req, res) => {
+  res.send("🚀 API rodando com sucesso!");
+});
 
 // =============================
 // ROTA LOGIN
@@ -75,7 +78,6 @@ app.post("/login", (req, res) => {
     WHERE login=? AND senha=?
     LIMIT 1
   `;
-
   db.query(sql, [login, senha], (err, rows) => {
     if (err) return res.status(500).json({ erro: "Erro ao consultar profissional" });
     if (rows.length === 0) return res.status(401).json({ erro: "Credenciais inválidas" });
@@ -117,102 +119,65 @@ app.delete("/profissionais/:id", (req, res) => {
 // ROTAS RESPOSTAS
 // =============================
 
-// --- Inserir uma resposta ---
+// Inserir uma resposta única
 app.post("/respostas", (req, res) => {
   const r = req.body;
 
-  const buscarProf = new Promise((resolve, reject) => {
-    if (!r.profissional_id) return resolve({});
-    db.query("SELECT * FROM profissionais WHERE id=?", [r.profissional_id], (err, rows) => {
-      if (err) return reject(err);
-      resolve(rows[0] || {});
-    });
-  });
+  db.query(
+    "SELECT * FROM profissionais WHERE id = ?",
+    [r.profissional_id || null],
+    (err, rows) => {
+      if (err) return res.status(500).json({ erro: "Erro ao buscar profissional", detalhe: err });
 
-  buscarProf
-    .then((prof) => {
+      const prof = rows[0] || {};
       const sql = `
-        INSERT INTO respostas 
+        INSERT INTO respostas
         (cns, nome, data_nasc, sexo, local, leite_peito, alimentos, refeicao_tv, refeicoes, consumos,
          prof_nome, prof_login, prof_sus, prof_cbo, prof_cnes, prof_ine, profissional_id, data_envio)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
       `;
-
       const values = [
-        r.cns || null,
-        r.nome || null,
-        formatarDataBRparaISO(r.data_nasc),
-        r.sexo || null,
-        r.local || null,
-        r.leite_peito || null,
-        r.alimentos || null,
-        r.refeicao_tv || null,
-        r.refeicoes || null,
-        r.consumos || null,
-        prof.nome || null,
-        prof.login || null,
-        prof.sus || null,
-        prof.cbo || null,
-        prof.cnes || null,
-        prof.ine || null,
-        r.profissional_id || null,
-        new Date()
+        r.cns, r.nome, formatarDataBRparaISO(r.dataNasc), r.sexo, r.local,
+        r.leitePeito, r.alimentos, r.refeicaoTV, r.refeicoes, r.consumos,
+        prof.nome || null, prof.login || null, prof.sus || null, prof.cbo || null, prof.cnes || null, prof.ine || null,
+        r.profissional_id || null
       ];
 
       db.query(sql, values, (err, result) => {
         if (err) return res.status(500).json({ erro: "Erro ao salvar resposta", detalhe: err });
-        res.json({ id: result.insertId, ...r, ...prof, data_envio: new Date() });
+        res.json({ id: result.insertId, ...r, prof });
       });
-    })
-    .catch((err) => res.status(500).json({ erro: "Erro ao buscar profissional", detalhe: err }));
+    }
+  );
 });
 
-// --- Inserir várias respostas (lote) ---
+// Inserir múltiplas respostas (em lote)
 app.post("/respostas/lote", async (req, res) => {
-  const respostas = req.body;
-  if (!Array.isArray(respostas)) return res.status(400).json({ erro: "Esperado um array de respostas" });
-
+  const respostas = req.body; // array de respostas
   try {
     const values = [];
-
     for (const r of respostas) {
-      const prof = await new Promise((resolve, reject) => {
+      const prof = await new Promise((resolve) => {
         if (!r.profissional_id) return resolve({});
         db.query("SELECT * FROM profissionais WHERE id=?", [r.profissional_id], (err, rows) => {
-          if (err) return reject(err);
+          if (err) return resolve({});
           resolve(rows[0] || {});
         });
       });
-
       values.push([
-        r.cns || null,
-        r.nome || null,
-        formatarDataBRparaISO(r.data_nasc),
-        r.sexo || null,
-        r.local || null,
-        r.leite_peito || null,
-        r.alimentos || null,
-        r.refeicao_tv || null,
-        r.refeicoes || null,
-        r.consumos || null,
-        prof.nome || null,
-        prof.login || null,
-        prof.sus || null,
-        prof.cbo || null,
-        prof.cnes || null,
-        prof.ine || null,
-        r.profissional_id || null,
-        new Date()
+        r.cns, r.nome, formatarDataBRparaISO(r.dataNasc), r.sexo, r.local,
+        r.leitePeito, r.alimentos, r.refeicaoTV, r.refeicoes, r.consumos,
+        prof.nome || null, prof.login || null, prof.sus || null, prof.cbo || null, prof.cnes || null, prof.ine || null,
+        r.profissional_id || null
       ]);
     }
 
     const sql = `
-      INSERT INTO respostas 
+      INSERT INTO respostas
       (cns, nome, data_nasc, sexo, local, leite_peito, alimentos, refeicao_tv, refeicoes, consumos,
-       prof_nome, prof_login, prof_sus, prof_cbo, prof_cnes, prof_ine, profissional_id, data_envio)
+       prof_nome, prof_login, prof_sus, prof_cbo, prof_cnes, prof_ine, profissional_id)
       VALUES ?
     `;
-
     db.query(sql, [values], (err, result) => {
       if (err) return res.status(500).json({ erro: "Erro ao salvar respostas em lote", detalhe: err });
       res.json({ mensagem: "Respostas salvas com sucesso", inseridos: result.affectedRows });
@@ -222,20 +187,19 @@ app.post("/respostas/lote", async (req, res) => {
   }
 });
 
-// --- Listar respostas ---
+// Listar respostas
 app.get("/respostas", (req, res) => {
   db.query("SELECT * FROM respostas ORDER BY id DESC", (err, rows) => {
     if (err) return res.status(500).json({ erro: err });
     const formatadas = rows.map(r => ({
       ...r,
-      data_nasc: formatarDataBR(r.data_nasc),
-      data_envio: r.data_envio ? formatarDataBR(r.data_envio) : null
+      data_nasc: formatarDataBR(r.data_nasc)
     }));
     res.json(formatadas);
   });
 });
 
-// --- Deletar resposta ---
+// Deletar resposta
 app.delete("/respostas/:id", (req, res) => {
   const { id } = req.params;
   db.query("DELETE FROM respostas WHERE id=?", [id], (err) => {
@@ -248,4 +212,6 @@ app.delete("/respostas/:id", (req, res) => {
 // INICIAR SERVIDOR
 // =============================
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("🚀 Servidor rodando na porta " + PORT));
+app.listen(PORT, () => {
+  console.log("🚀 Servidor rodando na porta " + PORT);
+});
