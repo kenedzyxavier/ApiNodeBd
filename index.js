@@ -39,22 +39,26 @@ db.getConnection((err, connection) => {
 // =============================
 function formatarDataBRparaISO(data) {
   if (!data) return null;
+
   if (data.includes("/")) {
     const [dia, mes, ano] = data.split("/");
-    return `${ano}-${mes}-${dia}`;
+    if (dia && mes && ano) return `${ano}-${mes}-${dia}`;
   }
+
   if (data.length === 8) {
     const dia = data.substring(0, 2);
     const mes = data.substring(2, 4);
     const ano = data.substring(4, 8);
     return `${ano}-${mes}-${dia}`;
   }
-  return data;
+
+  return data; // já está em ISO
 }
 
 function formatarDataBR(dataISO) {
   if (!dataISO) return null;
   const d = new Date(dataISO);
+  if (isNaN(d.getTime())) return null;
   const dia = String(d.getUTCDate()).padStart(2, "0");
   const mes = String(d.getUTCMonth() + 1).padStart(2, "0");
   const ano = d.getUTCFullYear();
@@ -69,7 +73,7 @@ app.get("/", (req, res) => {
 });
 
 // =============================
-// ROTA LOGIN
+// LOGIN
 // =============================
 app.post("/login", (req, res) => {
   const { login, senha } = req.body;
