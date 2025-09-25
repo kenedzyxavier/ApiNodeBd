@@ -22,9 +22,8 @@ const db = mysql.createPool({
 
 // Testar conexão inicial
 db.getConnection((err, connection) => {
-  if (err) {
-    console.error("❌ Erro ao conectar no MySQL:", err);
-  } else {
+  if (err) console.error("❌ Erro ao conectar no MySQL:", err);
+  else {
     console.log("✅ Conectado ao MySQL!");
     connection.release();
   }
@@ -61,19 +60,14 @@ function formatarDataBR(dataISO) {
 // =============================
 // ROTA RAIZ
 // =============================
-app.get("/", (req, res) => {
-  res.send("🚀 API rodando com sucesso!");
-});
+app.get("/", (req, res) => res.send("🚀 API rodando com sucesso!"));
 
 // =============================
 // ROTA LOGIN
 // =============================
 app.post("/login", (req, res) => {
   const { login, senha } = req.body;
-
-  if (!login || !senha) {
-    return res.status(400).json({ erro: "Login e senha são obrigatórios" });
-  }
+  if (!login || !senha) return res.status(400).json({ erro: "Login e senha são obrigatórios" });
 
   const sql = `
     SELECT id, nome, login, sus, cbo, cnes, ine
@@ -141,7 +135,7 @@ app.post("/respostas", (req, res) => {
         INSERT INTO respostas 
         (cns, nome, data_nasc, sexo, local, leite_peito, alimentos, refeicao_tv, refeicoes, consumos,
          prof_nome, prof_login, prof_sus, prof_cbo, prof_cnes, prof_ine, profissional_id, data_envio)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
       const values = [
@@ -161,12 +155,13 @@ app.post("/respostas", (req, res) => {
         prof.cbo || null,
         prof.cnes || null,
         prof.ine || null,
-        r.profissional_id || null
+        r.profissional_id || null,
+        new Date()
       ];
 
       db.query(sql, values, (err, result) => {
         if (err) return res.status(500).json({ erro: "Erro ao salvar resposta", detalhe: err });
-        res.json({ id: result.insertId, ...r, prof });
+        res.json({ id: result.insertId, ...r, ...prof, data_envio: new Date() });
       });
     })
     .catch((err) => res.status(500).json({ erro: "Erro ao buscar profissional", detalhe: err }));
@@ -175,23 +170,20 @@ app.post("/respostas", (req, res) => {
 // --- Inserir várias respostas (lote) ---
 app.post("/respostas/lote", async (req, res) => {
   const respostas = req.body;
-  if (!Array.isArray(respostas)) {
-    return res.status(400).json({ erro: "Esperado um array de respostas" });
-  }
+  if (!Array.isArray(respostas)) return res.status(400).json({ erro: "Esperado um array de respostas" });
 
   try {
     const values = [];
 
     for (const r of respostas) {
-      const prof = await new Promise((resolve) => {
+      const prof = await new Promise((resolve, reject) => {
         if (!r.profissional_id) return resolve({});
         db.query("SELECT * FROM profissionais WHERE id=?", [r.profissional_id], (err, rows) => {
-          if (err) return resolve({});
+          if (err) return reject(err);
           resolve(rows[0] || {});
         });
       });
 
-      // Certifique-se de que o array tem 18 colunas (incluindo data_envio)
       values.push([
         r.cns || null,
         r.nome || null,
@@ -210,7 +202,7 @@ app.post("/respostas/lote", async (req, res) => {
         prof.cnes || null,
         prof.ine || null,
         r.profissional_id || null,
-        new Date() // data_envio
+        new Date()
       ]);
     }
 
@@ -225,12 +217,10 @@ app.post("/respostas/lote", async (req, res) => {
       if (err) return res.status(500).json({ erro: "Erro ao salvar respostas em lote", detalhe: err });
       res.json({ mensagem: "Respostas salvas com sucesso", inseridos: result.affectedRows });
     });
-
   } catch (error) {
     res.status(500).json({ erro: "Erro interno ao processar respostas em lote", detalhe: error });
   }
 });
-
 
 // --- Listar respostas ---
 app.get("/respostas", (req, res) => {
@@ -238,7 +228,8 @@ app.get("/respostas", (req, res) => {
     if (err) return res.status(500).json({ erro: err });
     const formatadas = rows.map(r => ({
       ...r,
-      data_nasc: formatarDataBR(r.data_nasc)
+      data_nasc: formatarDataBR(r.data_nasc),
+      data_envio: r.data_envio ? formatarDataBR(r.data_envio) : null
     }));
     res.json(formatadas);
   });
@@ -257,6 +248,4 @@ app.delete("/respostas/:id", (req, res) => {
 // INICIAR SERVIDOR
 // =============================
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log("🚀 Servidor rodando na porta " + PORT);
-});
+app.listen(PORT, () => console.log("🚀 Servidor rodando na porta " + PORT));
