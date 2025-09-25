@@ -19,7 +19,7 @@ const db = mysql.createPool({
   password: process.env.DB_PASS,
   database: process.env.DB_NAME,
   port: process.env.DB_PORT || 3306,
-  ssl: { rejectUnauthorized: false }, // Railway/Render exigem SSL
+  ssl: { rejectUnauthorized: false },
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0
@@ -27,9 +27,8 @@ const db = mysql.createPool({
 
 // Teste inicial
 db.getConnection((err, connection) => {
-  if (err) {
-    console.error("❌ Erro ao conectar no MySQL:", err);
-  } else {
+  if (err) console.error("❌ Erro ao conectar no MySQL:", err);
+  else {
     console.log("✅ Conectado ao MySQL!");
     connection.release();
   }
@@ -56,8 +55,8 @@ function formatarDataBRparaISO(data) {
 function formatarDataBR(dataISO) {
   if (!dataISO) return null;
   const d = new Date(dataISO);
-  const dia = String(d.getUTCDate()).padStart(2, '0');
-  const mes = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dia = String(d.getUTCDate()).padStart(2, "0");
+  const mes = String(d.getUTCMonth() + 1).padStart(2, "0");
   const ano = d.getUTCFullYear();
   return `${dia}/${mes}/${ano}`;
 }
@@ -74,10 +73,7 @@ app.get("/", (req, res) => {
 // =============================
 app.post("/login", (req, res) => {
   const { login, senha } = req.body;
-
-  if (!login || !senha) {
-    return res.status(400).json({ erro: "Login e senha são obrigatórios" });
-  }
+  if (!login || !senha) return res.status(400).json({ erro: "Login e senha são obrigatórios" });
 
   const sql = `
     SELECT id, nome, login, sus, cbo, cnes, ine
@@ -85,12 +81,9 @@ app.post("/login", (req, res) => {
     WHERE login=? AND senha=?
     LIMIT 1
   `;
-
   db.query(sql, [login, senha], (err, rows) => {
     if (err) return res.status(500).json({ erro: "Erro ao consultar profissional" });
-    if (rows.length === 0) {
-      return res.status(401).json({ erro: "Credenciais inválidas" });
-    }
+    if (rows.length === 0) return res.status(401).json({ erro: "Credenciais inválidas" });
     res.json(rows[0]);
   });
 });
@@ -99,14 +92,16 @@ app.post("/login", (req, res) => {
 // ROTAS PROFISSIONAIS
 // =============================
 app.post("/profissionais", (req, res) => {
-  const p = req.body;
+  const { nome, login, senha, sus, cbo, cnes, ine } = req.body;
+  if (!nome || !login || !senha) return res.status(400).json({ erro: "Nome, login e senha são obrigatórios" });
+
   const sql = `
-    INSERT INTO profissionais (nome, login, sus, cbo, cnes, ine, senha)
+    INSERT INTO profissionais (nome, login, senha, sus, cbo, cnes, ine)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `;
-  db.query(sql, [p.nome, p.login, p.sus, p.cbo, p.cnes, p.ine, p.senha], (err, result) => {
+  db.query(sql, [nome, login, senha, sus, cbo, cnes, ine], (err, result) => {
     if (err) return res.status(500).json({ erro: "Erro ao salvar profissional", detalhe: err });
-    res.json({ id: result.insertId, ...p });
+    res.json({ id: result.insertId, nome, login, sus, cbo, cnes, ine });
   });
 });
 
@@ -130,13 +125,13 @@ app.delete("/profissionais/:id", (req, res) => {
 // =============================
 app.post("/respostas", (req, res) => {
   const r = req.body;
+  if (!r.nome || !r.cns) return res.status(400).json({ erro: "Nome e CNS são obrigatórios" });
 
   const sql = `
     INSERT INTO respostas 
-    (cns, nome, data_nasc, sexo, local, leite_peito, alimentos, refeicao_tv, refeicoes, consumos, profissionais_id)
+    (cns, nome, data_nasc, sexo, local, leite_peito, alimentos, refeicao_tv, refeicoes, consumos, profissional_id)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
-
   db.query(sql, [
     r.cns,
     r.nome,
@@ -148,7 +143,7 @@ app.post("/respostas", (req, res) => {
     r.refeicaoTV,
     r.refeicoes,
     r.consumos,
-    r.profissionaisId || null
+    r.profissional_id || null
   ], (err, result) => {
     if (err) return res.status(500).json({ erro: "Erro ao salvar resposta", detalhe: err });
     res.json({ id: result.insertId, ...r });
@@ -157,15 +152,7 @@ app.post("/respostas", (req, res) => {
 
 app.post("/respostas/lote", (req, res) => {
   const respostas = req.body;
-  if (!Array.isArray(respostas)) {
-    return res.status(400).json({ erro: "Esperado um array de respostas" });
-  }
-
-  const sql = `
-    INSERT INTO respostas 
-    (cns, nome, data_nasc, sexo, local, leite_peito, alimentos, refeicao_tv, refeicoes, consumos, profissionais_id)
-    VALUES ?
-  `;
+  if (!Array.isArray(respostas)) return res.status(400).json({ erro: "Esperado um array de respostas" });
 
   const values = respostas.map(r => [
     r.cns,
@@ -178,9 +165,14 @@ app.post("/respostas/lote", (req, res) => {
     r.refeicaoTV,
     r.refeicoes,
     r.consumos,
-    r.profissionaisId || null
+    r.profissional_id || null
   ]);
 
+  const sql = `
+    INSERT INTO respostas 
+    (cns, nome, data_nasc, sexo, local, leite_peito, alimentos, refeicao_tv, refeicoes, consumos, profissional_id)
+    VALUES ?
+  `;
   db.query(sql, [values], (err, result) => {
     if (err) return res.status(500).json({ erro: "Erro ao salvar respostas", detalhe: err });
     res.json({ mensagem: "Respostas salvas com sucesso", inseridos: result.affectedRows });
@@ -190,39 +182,20 @@ app.post("/respostas/lote", (req, res) => {
 app.get("/respostas", (req, res) => {
   const sql = `
     SELECT 
-      r.id,
-      r.cns,
-      r.nome,
-      r.data_nasc,
-      r.data_envio,
-      r.sexo,
-      r.local,
-      r.leite_peito,
-      r.alimentos,
-      r.refeicao_tv,
-      r.refeicoes,
-      r.consumos,
-      r.profissionais_id,
-      p.nome AS profissional_nome,
-      p.login AS profissional_login,
-      p.sus AS profissional_sus,
-      p.cbo AS profissional_cbo,
-      p.cnes AS profissional_cnes,
-      p.ine AS profissional_ine
+      r.id, r.cns, r.nome, r.data_nasc, r.data_envio, r.sexo, r.local, r.leite_peito, r.alimentos, r.refeicao_tv, r.refeicoes, r.consumos,
+      r.profissional_id,
+      p.nome AS profissional_nome, p.login AS profissional_login, p.sus AS profissional_sus, p.cbo AS profissional_cbo, p.cnes AS profissional_cnes, p.ine AS profissional_ine
     FROM respostas r
-    LEFT JOIN profissionais p ON r.profissionais_id = p.id
+    LEFT JOIN profissionais p ON r.profissional_id = p.id
     ORDER BY r.id DESC
   `;
-
   db.query(sql, (err, rows) => {
     if (err) return res.status(500).json({ erro: "Erro ao buscar respostas" });
-
     const formatadas = rows.map(r => ({
       ...r,
       data_nasc: formatarDataBR(r.data_nasc),
-      data_envio: formatarDataBR(r.data_envio) // ✅ novo campo
+      data_envio: formatarDataBR(r.data_envio)
     }));
-
     res.json(formatadas);
   });
 });
@@ -239,6 +212,4 @@ app.delete("/respostas/:id", (req, res) => {
 // INICIAR SERVIDOR
 // =============================
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log("🚀 Servidor rodando na porta " + PORT);
-});
+app.listen(PORT, () => console.log("🚀 Servidor rodando na porta " + PORT));
