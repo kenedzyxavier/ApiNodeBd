@@ -7,9 +7,7 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-// =============================
-// Conexão com MySQL (Railway)
-// =============================
+// ===== Conexão com MySQL (Railway) =====
 const db = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
@@ -22,10 +20,11 @@ const db = mysql.createPool({
   queueLimit: 0
 });
 
-// Testar conexão
+// Testar conexão inicial
 db.getConnection((err, connection) => {
-  if (err) console.error("❌ Erro ao conectar no MySQL:", err);
-  else {
+  if (err) {
+    console.error("❌ Erro ao conectar no MySQL:", err);
+  } else {
     console.log("✅ Conectado ao MySQL!");
     connection.release();
   }
@@ -60,17 +59,18 @@ function formatarDataBR(dataISO) {
 }
 
 // =============================
-// Rota raiz
+// ROTA RAIZ
 // =============================
-app.get("/", (req, res) => res.send("🚀 API rodando com sucesso!"));
+app.get("/", (req, res) => {
+  res.send("🚀 API rodando com sucesso!");
+});
 
 // =============================
-// Rota de login
+// ROTA LOGIN
 // =============================
 app.post("/login", (req, res) => {
   const { login, senha } = req.body;
-  if (!login || !senha)
-    return res.status(400).json({ erro: "Login e senha são obrigatórios" });
+  if (!login || !senha) return res.status(400).json({ erro: "Login e senha são obrigatórios" });
 
   const sql = `
     SELECT id, nome, login, sus, cbo, cnes, ine
@@ -86,7 +86,7 @@ app.post("/login", (req, res) => {
 });
 
 // =============================
-// Rotas profissionais
+// ROTAS PROFISSIONAIS
 // =============================
 app.post("/profissionais", (req, res) => {
   const p = req.body;
@@ -116,42 +116,48 @@ app.delete("/profissionais/:id", (req, res) => {
 });
 
 // =============================
-// Rotas respostas
+// ROTAS RESPOSTAS
 // =============================
+
+// Inserir uma resposta única
 app.post("/respostas", (req, res) => {
   const r = req.body;
-  db.query("SELECT * FROM profissionais WHERE id=?", [r.profissional_id || null], (err, rows) => {
-    if (err) return res.status(500).json({ erro: "Erro ao buscar profissional", detalhe: err });
 
-    const prof = rows[0] || {};
-    const sql = `
-      INSERT INTO respostas
-      (cns, nome, data_nasc, sexo, local, leite_peito, alimentos, refeicao_tv, refeicoes, consumos,
-       prof_nome, prof_login, prof_sus, prof_cbo, prof_cnes, prof_ine, profissional_id, data_envio)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-    `;
-    const values = [
-      r.cns, r.nome, formatarDataBRparaISO(r.data_nasc), r.sexo, r.local,
-      r.leite_peito, r.alimentos, r.refeicao_tv, r.refeicoes, r.consumos,
-      prof.nome || null, prof.login || null, prof.sus || null, prof.cbo || null, prof.cnes || null, prof.ine || null,
-      r.profissional_id || null
-    ];
+  db.query(
+    "SELECT * FROM profissionais WHERE id = ?",
+    [r.profissional_id || null],
+    (err, rows) => {
+      if (err) return res.status(500).json({ erro: "Erro ao buscar profissional", detalhe: err });
 
-    db.query(sql, values, (err, result) => {
-      if (err) return res.status(500).json({ erro: "Erro ao salvar resposta", detalhe: err });
-      res.json({ id: result.insertId, ...r, prof });
-    });
-  });
+      const prof = rows[0] || {};
+      const sql = `
+        INSERT INTO respostas
+        (cns, nome, data_nasc, sexo, local, leite_peito, alimentos, refeicao_tv, refeicoes, consumos,
+         prof_nome, prof_login, prof_sus, prof_cbo, prof_cnes, prof_ine, profissional_id, data_envio)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+      `;
+      const values = [
+        r.cns, r.nome, formatarDataBRparaISO(r.dataNasc), r.sexo, r.local,
+        r.leitePeito, r.alimentos, r.refeicaoTV, r.refeicoes, r.consumos,
+        prof.nome || null, prof.login || null, prof.sus || null, prof.cbo || null, prof.cnes || null, prof.ine || null,
+        r.profissional_id || null
+      ];
+
+      db.query(sql, values, (err, result) => {
+        if (err) return res.status(500).json({ erro: "Erro ao salvar resposta", detalhe: err });
+        res.json({ id: result.insertId, ...r, prof });
+      });
+    }
+  );
 });
 
+// Inserir múltiplas respostas (em lote)
 app.post("/respostas/lote", async (req, res) => {
-  const respostas = req.body;
-  if (!Array.isArray(respostas)) return res.status(400).json({ erro: "Esperado um array de respostas" });
-
+  const respostas = req.body; // array de respostas
   try {
     const values = [];
     for (const r of respostas) {
-      const prof = await new Promise(resolve => {
+      const prof = await new Promise((resolve) => {
         if (!r.profissional_id) return resolve({});
         db.query("SELECT * FROM profissionais WHERE id=?", [r.profissional_id], (err, rows) => {
           if (err) return resolve({});
@@ -159,8 +165,8 @@ app.post("/respostas/lote", async (req, res) => {
         });
       });
       values.push([
-        r.cns, r.nome, formatarDataBRparaISO(r.data_nasc), r.sexo, r.local,
-        r.leite_peito, r.alimentos, r.refeicao_tv, r.refeicoes, r.consumos,
+        r.cns, r.nome, formatarDataBRparaISO(r.dataNasc), r.sexo, r.local,
+        r.leitePeito, r.alimentos, r.refeicaoTV, r.refeicoes, r.consumos,
         prof.nome || null, prof.login || null, prof.sus || null, prof.cbo || null, prof.cnes || null, prof.ine || null,
         r.profissional_id || null
       ]);
@@ -181,20 +187,19 @@ app.post("/respostas/lote", async (req, res) => {
   }
 });
 
+// Listar respostas
 app.get("/respostas", (req, res) => {
   db.query("SELECT * FROM respostas ORDER BY id DESC", (err, rows) => {
     if (err) return res.status(500).json({ erro: err });
-
     const formatadas = rows.map(r => ({
       ...r,
-      data_nasc: formatarDataBR(r.data_nasc),
-      data_envio: r.data_envio ? formatarDataBR(r.data_envio) : null
+      data_nasc: formatarDataBR(r.data_nasc)
     }));
-
     res.json(formatadas);
   });
 });
 
+// Deletar resposta
 app.delete("/respostas/:id", (req, res) => {
   const { id } = req.params;
   db.query("DELETE FROM respostas WHERE id=?", [id], (err) => {
@@ -204,7 +209,9 @@ app.delete("/respostas/:id", (req, res) => {
 });
 
 // =============================
-// Iniciar servidor
+// INICIAR SERVIDOR
 // =============================
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("🚀 Servidor rodando na porta " + PORT));
+app.listen(PORT, () => {
+  console.log("🚀 Servidor rodando na porta " + PORT);
+});
