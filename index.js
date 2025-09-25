@@ -123,6 +123,7 @@ app.delete("/profissionais/:id", (req, res) => {
 app.post("/respostas", (req, res) => {
   const r = req.body;
 
+  // Busca o profissional
   db.query(
     "SELECT * FROM profissionais WHERE id = ?",
     [r.profissional_id || null],
@@ -139,13 +140,19 @@ app.post("/respostas", (req, res) => {
       const values = [
         r.cns, r.nome, formatarDataBRparaISO(r.dataNasc), r.sexo, r.local,
         r.leitePeito, r.alimentos, r.refeicaoTV, r.refeicoes, r.consumos,
-        prof.nome || null, prof.login || null, prof.sus || null, prof.cbo || null, prof.cnes || null, prof.ine || null,
+        prof.nome || null, prof.login || null, prof.sus || null, prof.cbo || null,
+        prof.cnes || null, prof.ine || null,
         r.profissional_id || null
       ];
 
       db.query(sql, values, (err, result) => {
         if (err) return res.status(500).json({ erro: "Erro ao salvar resposta", detalhe: err });
-        res.json({ id: result.insertId, ...r, prof });
+
+        res.json({
+          id: result.insertId,
+          ...r,
+          profissional: prof
+        });
       });
     }
   );
@@ -197,7 +204,8 @@ app.post("/respostas/lote", (req, res) => {
       }
       res.json({
         mensagem: "Respostas salvas com sucesso",
-        inseridos: result.affectedRows
+        inseridos: result.affectedRows,
+        profissionais: profs
       });
     });
   });
