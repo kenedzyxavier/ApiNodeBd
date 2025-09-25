@@ -7,7 +7,9 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-// ===== Conexão com MySQL (Railway) =====
+// =============================
+// Conexão com MySQL (Railway)
+// =============================
 const db = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
@@ -20,7 +22,7 @@ const db = mysql.createPool({
   queueLimit: 0
 });
 
-// Testar conexão inicial
+// Testar conexão
 db.getConnection((err, connection) => {
   if (err) {
     console.error("❌ Erro ao conectar no MySQL:", err);
@@ -59,18 +61,19 @@ function formatarDataBR(dataISO) {
 }
 
 // =============================
-// ROTA RAIZ
+// Rota raiz
 // =============================
 app.get("/", (req, res) => {
   res.send("🚀 API rodando com sucesso!");
 });
 
 // =============================
-// ROTA LOGIN
+// Rota de login
 // =============================
 app.post("/login", (req, res) => {
   const { login, senha } = req.body;
-  if (!login || !senha) return res.status(400).json({ erro: "Login e senha são obrigatórios" });
+  if (!login || !senha)
+    return res.status(400).json({ erro: "Login e senha são obrigatórios" });
 
   const sql = `
     SELECT id, nome, login, sus, cbo, cnes, ine
@@ -86,7 +89,7 @@ app.post("/login", (req, res) => {
 });
 
 // =============================
-// ROTAS PROFISSIONAIS
+// Rotas profissionais
 // =============================
 app.post("/profissionais", (req, res) => {
   const p = req.body;
@@ -116,13 +119,12 @@ app.delete("/profissionais/:id", (req, res) => {
 });
 
 // =============================
-// ROTAS RESPOSTAS
+// Rotas respostas
 // =============================
 
 // Inserir uma resposta única
 app.post("/respostas", (req, res) => {
   const r = req.body;
-
   db.query(
     "SELECT * FROM profissionais WHERE id = ?",
     [r.profissional_id || null],
@@ -151,9 +153,11 @@ app.post("/respostas", (req, res) => {
   );
 });
 
-// Inserir múltiplas respostas (em lote)
+// Inserir respostas em lote
 app.post("/respostas/lote", async (req, res) => {
-  const respostas = req.body; // array de respostas
+  const respostas = req.body;
+  if (!Array.isArray(respostas)) return res.status(400).json({ erro: "Esperado um array de respostas" });
+
   try {
     const values = [];
     for (const r of respostas) {
@@ -209,7 +213,7 @@ app.delete("/respostas/:id", (req, res) => {
 });
 
 // =============================
-// INICIAR SERVIDOR
+// Iniciar servidor
 // =============================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
