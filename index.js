@@ -183,14 +183,15 @@ app.post("/respostas/lote", async (req, res) => {
     const values = [];
 
     for (const r of respostas) {
-      const prof = await new Promise((resolve, reject) => {
+      const prof = await new Promise((resolve) => {
         if (!r.profissional_id) return resolve({});
         db.query("SELECT * FROM profissionais WHERE id=?", [r.profissional_id], (err, rows) => {
-          if (err) return reject(err);
+          if (err) return resolve({});
           resolve(rows[0] || {});
         });
       });
 
+      // Certifique-se de que o array tem 18 colunas (incluindo data_envio)
       values.push([
         r.cns || null,
         r.nome || null,
@@ -209,6 +210,7 @@ app.post("/respostas/lote", async (req, res) => {
         prof.cnes || null,
         prof.ine || null,
         r.profissional_id || null,
+        new Date() // data_envio
       ]);
     }
 
