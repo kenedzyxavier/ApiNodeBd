@@ -66,7 +66,7 @@ app.get("/", (req, res) => {
 });
 
 // =============================
-// ROTA LOGIN (senha em texto plano)
+// ROTA LOGIN
 // =============================
 app.post("/login", (req, res) => {
   const { login, senha } = req.body;
@@ -88,6 +88,8 @@ app.post("/login", (req, res) => {
 // =============================
 // ROTAS PROFISSIONAIS
 // =============================
+
+// Criar profissional
 app.post("/profissionais", (req, res) => {
   const p = req.body;
   const sql = `
@@ -100,6 +102,7 @@ app.post("/profissionais", (req, res) => {
   });
 });
 
+// Criar vários profissionais
 app.post("/profissionais/lote", (req, res) => {
   const profissionais = req.body;
   if (!Array.isArray(profissionais) || profissionais.length === 0) {
@@ -115,9 +118,7 @@ app.post("/profissionais/lote", (req, res) => {
     VALUES ?
   `;
   db.query(sql, [values], (err, result) => {
-    if (err) {
-      return res.status(500).json({ erro: "Erro ao salvar profissionais em lote", detalhe: err });
-    }
+    if (err) return res.status(500).json({ erro: "Erro ao salvar profissionais em lote", detalhe: err });
 
     const firstId = result.insertId || null;
     const inserted = profissionais.map((p, i) => ({
@@ -129,6 +130,7 @@ app.post("/profissionais/lote", (req, res) => {
   });
 });
 
+// Listar profissionais
 app.get("/profissionais", (req, res) => {
   db.query("SELECT * FROM profissionais", (err, rows) => {
     if (err) return res.status(500).json({ erro: err });
@@ -136,6 +138,7 @@ app.get("/profissionais", (req, res) => {
   });
 });
 
+// Deletar profissional
 app.delete("/profissionais/:id", (req, res) => {
   const { id } = req.params;
   db.query("DELETE FROM profissionais WHERE id=?", [id], (err) => {
@@ -148,45 +151,41 @@ app.delete("/profissionais/:id", (req, res) => {
 // ROTAS RESPOSTAS
 // =============================
 
-// Inserir uma resposta única
+// Inserir resposta única
 app.post("/respostas", (req, res) => {
   const r = req.body;
 
-  db.query(
-    "SELECT * FROM profissionais WHERE id = ?",
-    [r.profissional_id || null],
-    (err, rows) => {
-      if (err) return res.status(500).json({ erro: "Erro ao buscar profissional", detalhe: err });
+  db.query("SELECT * FROM profissionais WHERE id = ?", [r.profissional_id || null], (err, rows) => {
+    if (err) return res.status(500).json({ erro: "Erro ao buscar profissional", detalhe: err });
 
-      const prof = rows[0] || {};
-      const sql = `
-        INSERT INTO respostas
-        (cns, nome, data_nasc, sexo, local, leite_peito, alimentos, refeicao_tv, refeicoes, consumos,
-         prof_nome, prof_login, prof_sus, prof_cbo, prof_cnes, prof_ine, profissional_id, data_envio)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-      `;
-      const values = [
-        r.cns, r.nome, formatarDataBRparaISO(r.dataNasc), r.sexo, r.local,
-        r.leitePeito, r.alimentos, r.refeicaoTV, r.refeicoes, r.consumos,
-        prof.nome || null, prof.login || null, prof.sus || null, prof.cbo || null,
-        prof.cnes || null, prof.ine || null,
-        r.profissional_id || null
-      ];
+    const prof = rows[0] || {};
+    const sql = `
+      INSERT INTO respostas
+      (cns, nome, data_nasc, sexo, local, leite_peito, alimentos, refeicao_tv, refeicoes, consumos,
+       prof_nome, prof_login, prof_sus, prof_cbo, prof_cnes, prof_ine, profissional_id, data_envio)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+    `;
+    const values = [
+      r.cns, r.nome, formatarDataBRparaISO(r.dataNasc), r.sexo, r.local,
+      r.leitePeito, r.alimentos, r.refeicaoTV, r.refeicoes, r.consumos,
+      prof.nome || null, prof.login || null, prof.sus || null, prof.cbo || null,
+      prof.cnes || null, prof.ine || null,
+      r.profissional_id || null
+    ];
 
-      db.query(sql, values, (err, result) => {
-        if (err) return res.status(500).json({ erro: "Erro ao salvar resposta", detalhe: err });
+    db.query(sql, values, (err, result) => {
+      if (err) return res.status(500).json({ erro: "Erro ao salvar resposta", detalhe: err });
 
-        res.json({
-          id: result.insertId,
-          ...r,
-          profissional: prof
-        });
+      res.json({
+        id: result.insertId,
+        ...r,
+        profissional: prof
       });
-    }
-  );
+    });
+  });
 });
 
-// Inserir múltiplas respostas (em lote)
+// Inserir várias respostas
 app.post("/respostas/lote", (req, res) => {
   const respostas = req.body;
   const ids = respostas.map(r => r.profissional_id).filter(Boolean);
@@ -196,9 +195,7 @@ app.post("/respostas/lote", (req, res) => {
   }
 
   db.query("SELECT * FROM profissionais WHERE id IN (?)", [ids], (err, profs) => {
-    if (err) {
-      return res.status(500).json({ erro: "Erro ao buscar profissionais", detalhe: err });
-    }
+    if (err) return res.status(500).json({ erro: "Erro ao buscar profissionais", detalhe: err });
 
     const profMap = {};
     for (const p of profs) {
@@ -224,9 +221,8 @@ app.post("/respostas/lote", (req, res) => {
     `;
 
     db.query(sql, [values], (err, result) => {
-      if (err) {
-        return res.status(500).json({ erro: "Erro ao salvar respostas em lote", detalhe: err });
-      }
+      if (err) return res.status(500).json({ erro: "Erro ao salvar respostas em lote", detalhe: err });
+
       res.json({
         mensagem: "Respostas salvas com sucesso",
         inseridos: result.affectedRows,
@@ -248,7 +244,7 @@ app.get("/respostas", (req, res) => {
   });
 });
 
-// Listar respostas com JOIN (nova rota)
+// Listar respostas com JOIN
 app.get("/respostas/completo", (req, res) => {
   const sql = `
     SELECT r.*, p.nome AS prof_atual_nome, p.login AS prof_atual_login, 
