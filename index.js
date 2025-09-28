@@ -123,40 +123,117 @@ app.delete("/profissionais/:id", (req, res) => {
 app.post("/respostas", (req, res) => {
   const r = req.body;
 
-  // Busca o profissional
-  db.query(
-    "SELECT * FROM profissionais WHERE id = ?",
-    [r.profissional_id || null],
-    (err, rows) => {
-      if (err) return res.status(500).json({ erro: "Erro ao buscar profissional", detalhe: err });
+  // Decide se busca por ID ou login
+  let campo = null;
+  let valor = null;
 
-      const prof = rows[0] || {};
+  if (r.profissional_id) {
+    campo = "id";
+    valor = r.profissional_id;
+  } else if (r.prof_login) {
+    campo = "login";
+    valor = r.prof_login;
+  } else {
+    return res.status(400).json({ erro: "profissional_id ou prof_login é obrigatório" });
+  }
+
+  db.query(`SELECT * FROM profissionais WHERE ${campo}=? LIMIT 1`, [valor], (err, rows) => {
+    if (err) return res.status(500).json({ erro: "Erro ao buscar profissional", detalhe: err });
+
+    const prof = rows[0] || {};
+    const sql = `
+      INSERT INTO respostas
+      (cns, nome, data_nasc, sexo, local, leite_peito, alimentos, refeicao_tv, refeicoes, consumos,
+       prof_nome, prof_login, prof_sus, prof_cbo, prof_cnes, prof_ine, profissional_id, data_envio)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+    `;
+    const values = [
+      r.cns, r.nome, formatarDataBRparaISO(r.dataNasc), r.sexo, r.local,
+      r.leitePeito, r.alimentos, r.refeicaoTV, r.refeicoes, r.consumos,
+      prof.nome || null, prof.login || null, prof.sus || null, prof.cbo || null,
+      prof.cnes || null, prof.ine || null,
+      prof.id || null
+    ];
+
+    db.query(sql, values, (err2, result) => {
+      if (err2) return res.status(500).json({ erro: "Erro ao salvar resposta", detalhe: err2 });
+
+      res.json({
+        id: result.insertId,
+        ...r,
+        profissional: prof
+      });
+    });
+  });
+});
+
+// Inserir múltiplas respostas (em lote)
+app.post("/respostas/lote", (req, res) => {
+  const respostas = req.body; // array de respostas
+
+  if (!Array.isArray(respostas) || respostas.length === 0) {
+    return res.status(400).json({ erro: "Nenhuma resposta enviada" });
+  }
+
+  // Coletar IDs e logins
+  const ids = respostas.map(r => r.profissional_id).filter(Boolean);
+  const logins = respostas.map(r => r.prof_login).filter(Boolean);
+
+  if (ids.length === 0 && logins.length === 0) {
+    return res.status(400).json({ erro: "Nenhum profissional_id ou prof_login informado" });
+  }
+
+  // Busca todos os profissionais de uma vez
+  db.query(
+    "SELECT * FROM profissionais WHERE id IN (?) OR login IN (?)",
+    [ids.length ? ids : [0], logins.length ? logins : [""]],
+    (err, profs) => {
+      if (err) return res.status(500).json({ erro: "Erro ao buscar profissionais", detalhe: err });
+
+      // Mapeia por ID e login
+      const profMapId = {};
+      const profMapLogin = {};
+      for (const p of profs) {
+        profMapId[p.id] = p;
+        profMapLogin[p.login] = p;
+      }
+
+      // Monta valores para inserção
+      const values = respostas.map(r => {
+        const prof = r.profissional_id
+          ? profMapId[r.profissional_id] || {}
+          : profMapLogin[r.prof_login] || {};
+
+        return [
+          r.cns, r.nome, formatarDataBRparaISO(r.dataNasc), r.sexo, r.local,
+          r.leitePeito, r.alimentos, r.refeicaoTV, r.refeicoes, r.consumos,
+          prof.nome || null, prof.login || null, prof.sus || null,
+          prof.cbo || null, prof.cnes || null, prof.ine || null,
+          prof.id || null
+        ];
+      });
+
       const sql = `
         INSERT INTO respostas
         (cns, nome, data_nasc, sexo, local, leite_peito, alimentos, refeicao_tv, refeicoes, consumos,
-         prof_nome, prof_login, prof_sus, prof_cbo, prof_cnes, prof_ine, profissional_id, data_envio)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+         prof_nome, prof_login, prof_sus, prof_cbo, prof_cnes, prof_ine, profissional_id)
+        VALUES ?
       `;
-      const values = [
-        r.cns, r.nome, formatarDataBRparaISO(r.dataNasc), r.sexo, r.local,
-        r.leitePeito, r.alimentos, r.refeicaoTV, r.refeicoes, r.consumos,
-        prof.nome || null, prof.login || null, prof.sus || null, prof.cbo || null,
-        prof.cnes || null, prof.ine || null,
-        r.profissional_id || null
-      ];
 
-      db.query(sql, values, (err, result) => {
-        if (err) return res.status(500).json({ erro: "Erro ao salvar resposta", detalhe: err });
-
+      db.query(sql, [values], (err2, result) => {
+        if (err2) {
+          return res.status(500).json({ erro: "Erro ao salvar respostas em lote", detalhe: err2 });
+        }
         res.json({
-          id: result.insertId,
-          ...r,
-          profissional: prof
+          mensagem: "Respostas salvas com sucesso",
+          inseridos: result.affectedRows,
+          profissionais: profs
         });
       });
     }
   );
 });
+
 
 // Inserir múltiplas respostas (em lote)
 app.post("/respostas/lote", (req, res) => {
