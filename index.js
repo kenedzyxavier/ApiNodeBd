@@ -1,11 +1,11 @@
 const express = require("express");
 const mysql = require("mysql2");
-const bodyParser = require("body-parser");
 const cors = require("cors");
 
 const app = express();
 app.use(cors());
-app.use(bodyParser.json());
+app.use(express.json()); // Body parser nativo
+app.use(express.urlencoded({ extended: true }));
 
 // ===== Conexão com MySQL (Railway) =====
 const db = mysql.createPool({
@@ -59,16 +59,6 @@ function formatarDataBR(dataISO) {
 }
 
 // =============================
-// Função de validação de campos obrigatórios
-// =============================
-function validarCamposObrigatorios(obj, campos) {
-  for (const campo of campos) {
-    if (!obj[campo]) return campo;
-  }
-  return null;
-}
-
-// =============================
 // ROTA RAIZ
 // =============================
 app.get("/", (req, res) => {
@@ -76,13 +66,12 @@ app.get("/", (req, res) => {
 });
 
 // =============================
-// ROTA LOGIN
+// LOGIN
 // =============================
 app.post("/login", (req, res) => {
-  const campoFaltando = validarCamposObrigatorios(req.body, ["login", "senha"]);
-  if (campoFaltando) return res.status(400).json({ erro: `${campoFaltando} é obrigatório` });
-
   const { login, senha } = req.body;
+  if (!login || !senha) return res.status(400).json({ erro: "Login e senha são obrigatórios" });
+
   const sql = `
     SELECT id, nome, login, sus, cbo, cnes, ine
     FROM profissionais
@@ -97,52 +86,40 @@ app.post("/login", (req, res) => {
 });
 
 // =============================
-// ROTAS PROFISSIONAIS
+// PROFISSIONAIS
 // =============================
 app.post("/profissionais", (req, res) => {
-  const campoFaltando = validarCamposObrigatorios(req.body, ["nome", "login", "senha"]);
-  if (campoFaltando) return res.status(400).json({ erro: `${campoFaltando} é obrigatório` });
+  const { nome, login, senha, sus, cbo, cnes, ine } = req.body;
+  if (!nome || !login || !senha) return res.status(400).json({ erro: "nome, login e senha são obrigatórios" });
 
-  const p = req.body;
   const sql = `
     INSERT INTO profissionais (nome, login, sus, cbo, cnes, ine, senha)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `;
-  db.query(sql, [p.nome, p.login, p.sus, p.cbo, p.cnes, p.ine, p.senha], (err, result) => {
+  db.query(sql, [nome, login, sus || null, cbo || null, cnes || null, ine || null, senha], (err, result) => {
     if (err) return res.status(500).json({ erro: "Erro ao salvar profissional", detalhe: err });
-    res.json({ id: result.insertId, ...p });
+    res.json({ id: result.insertId, nome, login, sus, cbo, cnes, ine });
   });
 });
 
 app.post("/profissionais/lote", (req, res) => {
   const profissionais = req.body;
-  if (!Array.isArray(profissionais) || profissionais.length === 0) {
+  if (!Array.isArray(profissionais) || profissionais.length === 0)
     return res.status(400).json({ erro: "Envie um array de profissionais" });
+
+  for (let i = 0; i < profissionais.length; i++) {
+    const p = profissionais[i];
+    if (!p.nome || !p.login || !p.senha)
+      return res.status(400).json({ erro: `Profissional na posição ${i} precisa ter nome, login e senha` });
   }
 
-  // Validar cada item do array
-  for (const [i, p] of profissionais.entries()) {
-    const campoFaltando = validarCamposObrigatorios(p, ["nome", "login", "senha"]);
-    if (campoFaltando) return res.status(400).json({ erro: `Item ${i}: ${campoFaltando} é obrigatório` });
-  }
+  const values = profissionais.map(p => [p.nome, p.login, p.sus || null, p.cbo || null, p.cnes || null, p.ine || null, p.senha]);
+  const sql = `INSERT INTO profissionais (nome, login, sus, cbo, cnes, ine, senha) VALUES ?`;
 
-  const values = profissionais.map(p => [
-    p.nome, p.login, p.sus || null, p.cbo || null, p.cnes || null, p.ine || null, p.senha
-  ]);
-
-  const sql = `
-    INSERT INTO profissionais (nome, login, sus, cbo, cnes, ine, senha)
-    VALUES ?
-  `;
   db.query(sql, [values], (err, result) => {
     if (err) return res.status(500).json({ erro: "Erro ao salvar profissionais em lote", detalhe: err });
-
     const firstId = result.insertId || null;
-    const inserted = profissionais.map((p, i) => ({
-      id: firstId ? firstId + i : null,
-      ...p
-    }));
-
+    const inserted = profissionais.map((p, i) => ({ id: firstId ? firstId + i : null, ...p }));
     res.json(inserted);
   });
 });
@@ -163,17 +140,14 @@ app.delete("/profissionais/:id", (req, res) => {
 });
 
 // =============================
-// ROTAS RESPOSTAS
+// RESPOSTAS
 // =============================
 app.post("/respostas", (req, res) => {
-  const campoFaltando = validarCamposObrigatorios(req.body, ["nome", "profissional_id"]);
-  if (campoFaltando) return res.status(400).json({ erro: `${campoFaltando} é obrigatório` });
-
   const r = req.body;
+  if (!r.cns || !r.nome || !r.profissional_id) return res.status(400).json({ erro: "Campos obrigatórios: cns, nome, profissional_id" });
 
   db.query("SELECT * FROM profissionais WHERE id = ?", [r.profissional_id], (err, rows) => {
     if (err) return res.status(500).json({ erro: "Erro ao buscar profissional", detalhe: err });
-
     const prof = rows[0] || {};
     const sql = `
       INSERT INTO respostas
@@ -191,36 +165,28 @@ app.post("/respostas", (req, res) => {
 
     db.query(sql, values, (err, result) => {
       if (err) return res.status(500).json({ erro: "Erro ao salvar resposta", detalhe: err });
-
-      res.json({
-        id: result.insertId,
-        ...r,
-        profissional: prof
-      });
+      res.json({ id: result.insertId, ...r, profissional: prof });
     });
   });
 });
 
 app.post("/respostas/lote", (req, res) => {
   const respostas = req.body;
-  if (!Array.isArray(respostas) || respostas.length === 0) {
+  if (!Array.isArray(respostas) || respostas.length === 0)
     return res.status(400).json({ erro: "Envie um array de respostas" });
-  }
 
-  // Validar cada item
-  for (const [i, r] of respostas.entries()) {
-    const campoFaltando = validarCamposObrigatorios(r, ["nome", "profissional_id"]);
-    if (campoFaltando) return res.status(400).json({ erro: `Item ${i}: ${campoFaltando} é obrigatório` });
-  }
+  const ids = respostas.map(r => r.profissional_id).filter(Boolean);
+  if (ids.length === 0) return res.status(400).json({ erro: "Nenhum profissional_id informado" });
 
-  const ids = respostas.map(r => r.profissional_id);
   db.query("SELECT * FROM profissionais WHERE id IN (?)", [ids], (err, profs) => {
     if (err) return res.status(500).json({ erro: "Erro ao buscar profissionais", detalhe: err });
 
     const profMap = {};
     for (const p of profs) profMap[p.id] = p;
 
-    const values = respostas.map(r => {
+    const values = respostas.map((r, i) => {
+      if (!r.cns || !r.nome || !r.profissional_id)
+        throw new Error(`Resposta na posição ${i} precisa de cns, nome e profissional_id`);
       const prof = profMap[r.profissional_id] || {};
       return [
         r.cns, r.nome, formatarDataBRparaISO(r.dataNasc), r.sexo, r.local,
@@ -231,21 +197,14 @@ app.post("/respostas/lote", (req, res) => {
       ];
     });
 
-    const sql = `
-      INSERT INTO respostas
+    const sql = `INSERT INTO respostas
       (cns, nome, data_nasc, sexo, local, leite_peito, alimentos, refeicao_tv, refeicoes, consumos,
        prof_nome, prof_login, prof_sus, prof_cbo, prof_cnes, prof_ine, profissional_id)
-      VALUES ?
-    `;
+      VALUES ?`;
 
     db.query(sql, [values], (err, result) => {
       if (err) return res.status(500).json({ erro: "Erro ao salvar respostas em lote", detalhe: err });
-
-      res.json({
-        mensagem: "Respostas salvas com sucesso",
-        inseridos: result.affectedRows,
-        profissionais: profs
-      });
+      res.json({ mensagem: "Respostas salvas com sucesso", inseridos: result.affectedRows, profissionais: profs });
     });
   });
 });
@@ -286,6 +245,4 @@ app.delete("/respostas/:id", (req, res) => {
 // INICIAR SERVIDOR
 // =============================
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log("🚀 Servidor rodando na porta " + PORT);
-});
+app.listen(PORT, () => console.log("🚀 Servidor rodando na porta " + PORT));
